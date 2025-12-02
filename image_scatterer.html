@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<body style="background:#222;color:#eee;font-family:sans-serif;">
+<h2>Exakte Überlappungs-Pixel-Engine</h2>
+
+<input type="file" id="file" accept="image/*"><br><br>
+
+Pixelgröße: 
+<input type="range" id="pxSize" min="2" max="80" value="20">
+<span id="pxSizeVal">20</span>px<br><br>
+
+Überlappung (%): 
+<input type="range" id="ov" min="-50" max="50" value="10">
+<span id="ovVal">10</span>%<br><br>
+
+<button id="start">Start</button>
+<button id="stop">Stop</button>
+<button id="reset">Reset</button>
+<button id="download">Download PNG</button>
+
+<h3>Original</h3>
+<canvas id="imgCanvas" style="background:#444;"></canvas>
+
+<h3>Ergebnis</h3>
+<canvas id="outCanvas" style="background:#111;"></canvas>
+
+<!-- Unsichtbares Originalbild -->
+<canvas id="srcCanvas" style="display:none;"></canvas>
+
+<script>
+const fileInput = document.getElementById("file");
+
+const pxSizeSlider = document.getElementById("pxSize");
+const ovSlider = document.getElementById("ov");
+
+pxSizeSlider.oninput = () => pxSizeVal.textContent = pxSizeSlider.value;
+ovSlider.oninput = () => ovVal.textContent = ovSlider.value;
+
+const startBtn = document.getElementById("start");
+const stopBtn  = document.getElementById("stop");
+const resetBtn = document.getElementById("reset");
+const downloadBtn = document.getElementById("download");
+
+const imgCanvas = document.getElementById("imgCanvas");
+const outCanvas = document.getElementById("outCanvas");
+const srcCanvas = document.getElementById("srcCanvas");
+
+const imgCtx = imgCanvas.getContext("2d");
+const outCtx = outCanvas.getContext("2d");
+const srcCtx = srcCanvas.getContext("2d");
+
+let img = new Image();
+let loaded = false;
+let running = false;
+
+let pixelList = [];
+let index = 0;
+
+// ----------------------------------------------------
+// BILD LADEN
+// ----------------------------------------------------
+fileInput.onchange = e => {
+    let f = e.target.files[0];
+    if (!f) return;
+
+    let r = new FileReader();
+    r.onload = ev => {
+        img = new Image();
+        img.onload = () => {
+            loaded = true;
+
+            imgCanvas.width = img.width;
+            imgCanvas.height = img.height;
+            outCanvas.width = img.width;
+            outCanvas.height = img.height;
+            srcCanvas.width = img.width;
+            srcCanvas.height = img.height;
+
+            imgCtx.drawImage(img, 0, 0);
+            srcCtx.drawImage(img, 0, 0);
+
+            resetOutput();
+            generatePixelMap();
+        };
+        img.src = ev.target.result;
+    };
+    r.readAsDataURL(f);
+};
+
+// ----------------------------------------------------
+// RASTER- UND PIXEL-BERECHNUNG
+// ----------------------------------------------------
+function generatePixelMap() {
+    if (!loaded) return;
+
+    pixelList = [];
+    index = 0;
+
+    let px = parseInt(pxSizeSlider.value);
+    let overlapPercent = parseFloat(ovSlider.value) / 100;
+
+    // Rastergröße abhängig von Bildgröße UND Pixelgröße
+    let countX = img.width  / px;
+    let countY = img.height / px;
+
+    let stepX = (img.width  / countX) * (1 - overlapPercent);
+    let stepY = (img.height / countY) * (1 - overlapPercent);
+
+    for (let y = 0; y < img.height; y += stepY) {
+        for (let x = 0; x < img.width; x += stepX) {
+
+            let srcX = Math.floor(x);
+            let srcY = Math.floor(y);
+
+            pixelList.push({
+                srcX,
+                srcY,
+                drawX: x,
+                drawY: y,
+                z: Math.random()
+            });
+        }
+    }
+
+    // Z-Tiefe sortieren (echte Überlappung)
+    pixelList.sort((a, b) => a.z - b.z);
+}
+
+// ----------------------------------------------------
+// CANVAS RESETTEN
+// ----------------------------------------------------
+function resetOutput() {
+    outCtx.fillStyle = "#111";
+    outCtx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+    index = 0;
+}
+
+// ----------------------------------------------------
+// ZEICHNEN
+// ----------------------------------------------------
+startBtn.onclick = () => {
+    if (!loaded) return alert("Bitte Bild laden!");
+    running = true;
+    drawStep();
+};
+
+stopBtn.onclick = () => running = false;
+
+resetBtn.onclick = () => {
+    resetOutput();
+    generatePixelMap();
+};
+
+// ----------------------------------------------------
+// DOWNLOAD
+// ----------------------------------------------------
+downloadBtn.onclick = () => {
+    if (!loaded) return alert("Kein Bild zum Download vorhanden!");
+    
+    const dataURL = outCanvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = dataURL;
+    a.download = "pixel_art.png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+};
+
+// ----------------------------------------------------
+function drawStep() {
+    if (!running) return;
+
+    let px = parseInt(pxSizeSlider.value);
+    let steps = 300;
+
+    for (let i = 0; i < steps; i++) {
+
+        if (index >= pixelList.length) {
+            running = false;
+            return;
+        }
+
+        let p = pixelList[index];
+        let col = srcCtx.getImageData(p.srcX, p.srcY, 1, 1).data;
+
+        outCtx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+        outCtx.fillRect(p.drawX, p.drawY, px, px);
+
+        index++;
+    }
+
+    requestAnimationFrame(drawStep);
+}
+</script>
+</body>
+</html>
